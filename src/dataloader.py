@@ -2,26 +2,35 @@ from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
 import backtrader as bt
 from datetime import datetime
-
 from pathlib import Path
-from datetime import datetime
+import hashlib
+import warnings
+import os
+import config
 
 from alpaca.data.historical import StockHistoricalDataClient
 from dotenv import load_dotenv
-import os
 import pandas as pd
 
-# __file__ is src/dataloader.py → .parent is src/ → .parent is Root
-# for each user the root is different,
-# so we use __file__ to get the current file path and then navigate to the root
-ROOT = Path(__file__).parent.parent
-CACHE_DIR = ROOT / "data" / "cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR = config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 load_dotenv()
-stock_client = StockHistoricalDataClient(api_key=os.getenv("ALPACA_API_KEY"),secret_key=os.getenv("ALPACA_SECRET_KEY"))
+stock_client = StockHistoricalDataClient(
+    api_key=os.getenv("ALPACA_API_KEY"),
+    secret_key=os.getenv("ALPACA_SECRET_KEY")
+)
 
-def get_stock_data(symbols: list, start: datetime, end: datetime) -> pd.DataFrame:
+def _cache_path(symbols: list[str], start_str: str, end_str: str) -> Path:
+    """Kollisionssicherer Cache-Key via MD5-Hash der sortierten Symbolliste."""
+    symbol_hash = hashlib.md5("_".join(sorted(symbols)).encode()).hexdigest()[:10]
+    return CACHE_DIR / f"{symbol_hash}_{start_str}_{end_str}.parquet"
+
+def get_stock_data(
+    symbols: list[str] | str,
+    start: datetime,
+    end: datetime,
+    strict: bool = False  # True = alter Verhalten (raise bei missing)
+) -> pd.DataFrame:
     """
     Loads historical stock data for the given symbols and date range.
     Processes data for backtrader and saves it to cache for future use.
@@ -52,41 +61,48 @@ def get_stock_data(symbols: list, start: datetime, end: datetime) -> pd.DataFram
     start_str = start.strftime("%Y-%m-%d")
     end_str = end.strftime("%Y-%m-%d")
     
-    # create a unique cache filename based on symbols and date range
-    cache_file = CACHE_DIR / f"{'_'.join(sorted(symbols))}_{start_str}_{end_str}.parquet"
+    cache_file = _cache_path(symbols, start_str, end_str)
 
     # check if cache file exists and load from it if it does
     if cache_file.exists():
-        print(f"Loading from cache: {cache_file.name}")
+        print(f"[DataLoader] Cache hit: {cache_file.name}")
         return pd.read_parquet(cache_file)
     
     # else load from API
-    print(f"Loading from API: {symbols}...")
+    print(f"[DataLoader] Fetching {len(symbols)} symbols from API...")
     request_params = StockBarsRequest(
         symbol_or_symbols=symbols,
         timeframe=TimeFrame.Day,
         start=start,
         end=end,
-        adjustment="all"  # adjusted data (dividends and splits)
+        adjustment="all"
     )
     
     bars = stock_client.get_stock_bars(request_params)
-    df = bars.df
+    df = bars.df.reset_index()
 
-    # preprocess the data
-    df = df.reset_index()
+    # Symbol-Validierung
+    returned = set(df['symbol'].unique())
+    missing  = set(symbols) - returned
+    if missing:
+        msg = f"[DataLoader] {len(missing)}/{len(symbols)} symbols missing: {sorted(missing)}"
+        if strict:
+            raise ValueError(msg)
+        warnings.warn(msg, stacklevel=2)
+
+    # Preprocessing
     df['timestamp'] = df['timestamp'].dt.tz_localize(None)
-    df = df.rename(columns={'timestamp': 'datetime'})
-    df = df[['datetime', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
-    df = df.set_index('datetime')
-    
-    # save to cache
+    df = (df
+          .rename(columns={'timestamp': 'datetime'})
+          [['datetime', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
+          .set_index('datetime'))
+
     df.to_parquet(cache_file)
-    print(f"[DataLoader] Saved to cache: {cache_file.name}")
+    print(f"[DataLoader] Saved → {cache_file.name}  ({len(returned)} symbols, {len(df):,} rows)")
 
     return df
 
-def get_feed(symbol: str, start, end) -> bt.feeds.PandasData:
+def get_feed(symbol: str, start: datetime, end: datetime) -> bt.feeds.PandasData:
     # load data using the common data loader
     df_all = get_stock_data([symbol], start, end)
     
@@ -94,10 +110,9 @@ def get_feed(symbol: str, start, end) -> bt.feeds.PandasData:
     df_symbol = df_all[df_all['symbol'] == symbol]
     
     # create a backtrader feed from the DataFrame
-    feed = bt.feeds.PandasData(
+    return bt.feeds.PandasData(
         dataname=df_symbol,
-        datetime=None, 
+        datetime=None,
         open="open", high="high", low="low", close="close", volume="volume",
-        openinterest=-1 # no open interest column, so we set it to -1 (ignored by backtrader)
+        openinterest=-1
     )
-    return feed
