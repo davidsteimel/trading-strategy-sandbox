@@ -6,13 +6,14 @@ from pathlib import Path
 import hashlib
 import warnings
 import os
-import config
+from src import config
 
 from alpaca.data.historical import StockHistoricalDataClient
 from dotenv import load_dotenv
 import pandas as pd
 
-CACHE_DIR = config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_DIR = config.CACHE_DIR
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 load_dotenv()
 stock_client = StockHistoricalDataClient(
