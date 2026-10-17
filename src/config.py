@@ -1,71 +1,7 @@
-"""
-config.py  –  Configuration for Trading Strategy Sandbox
-=========================================
-Main config:
-  - Paths
-  - Dates / Timeframe Defaults
-  - Universe Definitions (S&P 400 MidCap, Watchlist)
-  - Data-Parameter
-  - Logging
-
-Stratgey specific config:
-    - strategies/pairs_trading/config.py
-"""
-
-from pathlib import Path
-from datetime import datetime
-
-ROOT      = Path(__file__).parent.parent
-DATA_DIR  = ROOT / "data"
-CACHE_DIR = DATA_DIR / "cache"
-LOG_DIR   = ROOT / "logs"
-OUTPUT_DIR = ROOT / "output"
-
-for _dir in (CACHE_DIR, LOG_DIR, OUTPUT_DIR):
-    _dir.mkdir(parents=True, exist_ok=True)
-
-
-# Backtesting Timeframe Defaults
-DEFAULT_START: datetime = datetime(2018, 1, 1)
-DEFAULT_END:   datetime = datetime(2023, 12, 31)
-
-# Out-of-Sample Validation Timeframe
-OOS_START: datetime = datetime(2024, 1, 1)
-OOS_END:   datetime = datetime(2024, 12, 31)
-
-
-TIMEFRAME         = "1Day"       # Alpaca TimeFrame-Mapping
-PRICE_ADJUSTMENT  = "all"        # "all" = Dividenden + Splits abjusticated Data
-MIN_HISTORY_DAYS  = 252          # Tradingdays per year
-PRICE_COLUMN      = "close"      # standard price column for analysis
-
-
-
-WATCHLIST: list[str] = [
-    # Technology
-    "NVDA", "AAPL", "MSFT", "AMD",
-    # Financials
-    "JPM", "GS", "BAC",
-    # Energy
-    "XOM", "CVX",
-    # Consumer
-    "AMZN", "COST",
-    # Healthcare
-    "JNJ", "PFE",
-    # Industrials
-    "CAT", "DE",
-    # Utilities
-    "NEE",
-]
-
-
 # ─────────────────────────────────────────────
-# S&P 400 MIDCAP  –  vollständige Symbol-Liste
+# S&P 400 MIDCAP  –  complete list of components
 # ─────────────────────────────────────────────
-# Quelle: S&P MidCap 400 Komponenten (Stand: 2024)
-# Hinweis: Zusammensetzung ändert sich quartalsweise.
-#          Für Survivorship-Bias-freie Analysen historische
-#          Zusammensetzungen von einer Datenprovider-Quelle beziehen.
+# Source: S&P MidCap 400 Komponenten (Stand: 2024)
 
 SP400: list[str] = [
     # A
@@ -149,7 +85,6 @@ SP400: list[str] = [
 
 # Lookupsets for fast tests
 SP400_SET:    frozenset[str] = frozenset(SP400)
-WATCHLIST_SET: frozenset[str] = frozenset(WATCHLIST)
 
 SECTOR_MAP: dict[str, list[str]] = {
     "Technology":   ["NVDA", "AMD", "AKAM", "COHU", "FORM", "INFN", "MKSI", "PLXS", "RMBS", "SMCI"],
